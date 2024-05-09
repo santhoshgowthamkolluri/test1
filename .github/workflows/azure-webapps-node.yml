@@ -3,38 +3,30 @@ name: Code Review Workflow
 on: [pull_request]
 
 jobs:
-  prepare_matrix:
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.create_matrix.outputs.matrix }}
+  runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4.1.1
 
       - name: Get changed files
         id: changed-files
-        uses: tj-actions/changed-files@v43
-
-      - name: Create matrix for job strategy
-        id: create_matrix
         run: |
-          echo "::set-output name=matrix::$(echo ${{ steps.changed-files.outputs.all_changed_files }} | jq -R -s 'split("\n") | map(select(. != "")) | map({"file": .})')"
-  review_code:
-    needs: prepare_matrix
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix: ${{fromJson(needs.prepare_matrix.outputs.matrix)}}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4.1.1
-
-      - name: Review code for "${{ matrix.file }}"
+          echo "::set-output name=all_changed_files::$(git diff --name-only --diff-filter=ACMRT ${{ github.event.pull_request.base.sha }} ${{ github.sha }} | xargs)"
+        shell: bash
+  
+      - name: Review code
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Reviewing file: ${{ matrix.file }}"
-          content=$(jq -Rs . "$file")
-          json=$(jq -n --arg content "$content" '{model: "mistral", prompt: ("system\nYou are a code reviewer. Your role is to provide a direct review of the code without asking for context or providing explanations. DO NOT EXPLAIN THE ACTUAL CODE and only return the review comments without saying '\''the review for the code is'\'' or explain what does the code, just comments for improve and correct the code or prevent possible bugs. AGAIN DONT EXPLAIN THE CODE just add CODE COMMENTS and give the full code for fix the issues you found. AGAIN if you think a file should be changed give the detailed and full code for the change. Use the updated code and avoid outdated or deprecated code plz.\nuser\nReview the following code file. Give code comments only plz. code to review: " + $content + "\n\n\n\nassistant"), stream: false}')
-          review=$(curl -s http://127.0.0.1:11434/api/generate -d "$json" | jq -r '.response')
-          comment="Ollama Code Review for \`$file\`:\n\n$review"
-          echo "$comment" > ollama_review.txt
-          gh pr comment ${{ github.event.pull_request.number }} --body "$(cat ollama_review.txt)" || echo "Unable to post comment. Possible permission issue."
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama --version
+          ollama pull mistral
+  
+          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+            content=$(cat "$file")
+            review=$(curl -s http://127.0.0.1:11434/api/generate -d '{"model": "${{ inputs.model }}", "prompt": "Review the following file:\n\n```\n'"$content"'\n```", "stream": false}' | jq -r '.response')
+            comment="Ollama Code Review for \`$file\`:\n\n$review"
+            echo "$comment" >> ollama_review.txt
+          done
+          gh pr comment ${{ github.event.pull_request.number }} --body "$(cat ollama_review.txt)"
+        shell: bash
