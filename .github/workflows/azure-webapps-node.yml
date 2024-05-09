@@ -19,11 +19,12 @@ jobs:
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
           ollama --version
-          ollama pull mistral
+          ollama pull codellama
   
           for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+            echo 'hello'
             content=$(cat "$file")
-            review=$(curl -s http://127.0.0.1:11434/api/generate -d '{"model": "${{ inputs.model }}", "prompt": "Review the following file:\n\n```\n'"$content"'\n```", "stream": false}' | jq -r '.response')
+            review=$(curl -s http://127.0.0.1:11434/api/generate -d '{"model": "codellama", "prompt": "Review the following file:\n\n```\n'"$content"'\n```", "stream": false}' | jq -r '.response')
             comment="Ollama Code Review for \`$file\`:\n\n$review"
             echo "$comment" >> ollama_review.txt
           done
