@@ -11,9 +11,7 @@ jobs:
 
       - name: Get changed files
         id: changed-files
-        run: |
-          echo "::set-output name=all_changed_files::$(git diff --name-only --diff-filter=ACMRT ${{ github.event.pull_request.base.sha }} ${{ github.sha }} | xargs)"
-        shell: bash
+        uses: tj-actions/changed-files@v44
   
       - name: Review code
         env:
